@@ -1,0 +1,10 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+swift test
+binary_dir="$(swift build --show-bin-path)"
+python3 scripts/test-mcp.py "$binary_dir/bifrost"
+python3 scripts/check-public.py
+if otool -L "$binary_dir/bifrost" | grep -q EventKit; then echo 'CLI must not link EventKit.' >&2; exit 1; fi
+plutil -lint Resources/Info.plist Resources/Bifrost.entitlements
+bash -n scripts/build scripts/install scripts/restore scripts/check

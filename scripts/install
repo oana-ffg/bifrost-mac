@@ -1,0 +1,32 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+app="$PWD/dist/Bifrost.app"
+if [[ ! -d "$app" ]]; then echo 'Run scripts/build first.' >&2; exit 1; fi
+codesign --verify --deep --strict "$app"
+if pgrep -f '^/Applications/Bifrost.app/Contents/MacOS/(Bifrost|BifrostHost)$' >/dev/null; then
+  echo 'Quit Bifrost using its menu before installing. Active requests will not be interrupted automatically.' >&2
+  exit 1
+fi
+if [[ -L /Applications/Bifrost.app ]]; then echo 'Refusing symlink at /Applications/Bifrost.app.' >&2; exit 1; fi
+if [[ -e /Applications/Bifrost.app ]]; then
+  bundle_id="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' /Applications/Bifrost.app/Contents/Info.plist)"
+  if [[ "$bundle_id" != io.github.oana-ffg.bifrost ]]; then echo 'Refusing to replace a different application.' >&2; exit 1; fi
+  mkdir -p "$HOME/.bifrost/backups"
+  chmod 700 "$HOME/.bifrost" "$HOME/.bifrost/backups"
+  archive="$HOME/.bifrost/backups/Bifrost-$(date +%Y%m%dT%H%M%S)-$$.zip"
+  ditto -c -k --sequesterRsrc --keepParent /Applications/Bifrost.app "$archive"
+  unzip -tq "$archive"
+  python3 - <<'PY_REMOVE'
+from pathlib import Path
+import shutil
+app=Path('/Applications/Bifrost.app')
+if app.is_symlink() or app.name != 'Bifrost.app':
+    raise SystemExit('Refusing unsafe application replacement')
+shutil.rmtree(app)
+PY_REMOVE
+fi
+ditto "$app" /Applications/Bifrost.app
+codesign --verify --deep --strict /Applications/Bifrost.app
+open /Applications/Bifrost.app
+printf 'Installed. CLI: /Applications/Bifrost.app/Contents/MacOS/bifrost\n'

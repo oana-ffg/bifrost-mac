@@ -1,0 +1,19 @@
+#!/bin/bash
+set -euo pipefail
+if [[ $# != 1 || "$1" != /* || ! -f "$1" ]]; then echo 'Usage: scripts/restore /absolute/path/to/Bifrost-backup.zip' >&2; exit 1; fi
+if pgrep -f '^/Applications/Bifrost.app/Contents/MacOS/(Bifrost|BifrostHost)$' >/dev/null; then echo 'Quit Bifrost before restoring.' >&2; exit 1; fi
+staging="$(mktemp -d /private/tmp/bifrost-restore.XXXXXX)"
+trap 'rm -rf "$staging"' EXIT
+# Backups are created locally by scripts/install. Only extract a backup you trust.
+ditto -x -k "$1" "$staging"
+restored="$staging/Bifrost.app"
+if [[ -L "$restored" || ! -d "$restored" ]]; then echo 'Backup does not contain a regular Bifrost.app.' >&2; exit 1; fi
+bundle_id="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$restored/Contents/Info.plist")"
+if [[ "$bundle_id" != io.github.oana-ffg.bifrost ]]; then echo 'Backup is a different application.' >&2; exit 1; fi
+codesign --verify --deep --strict "$restored"
+if [[ -e /Applications/Bifrost.app ]]; then
+  echo 'Move the current /Applications/Bifrost.app aside before restoring; no app is overwritten by restore.' >&2
+  exit 1
+fi
+ditto "$restored" /Applications/Bifrost.app
+open /Applications/Bifrost.app

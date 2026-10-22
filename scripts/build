@@ -1,0 +1,42 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+swift build -c release
+binary_dir="$(swift build -c release --show-bin-path)"
+app="$PWD/dist/Bifrost.app"
+# Only the known generated bundle is replaced. Never remove arbitrary user paths.
+python3 - <<'PY'
+from pathlib import Path
+import shutil
+if Path('dist').is_symlink():
+    raise SystemExit('Refusing symlink at dist')
+app=Path('dist/Bifrost.app')
+if app.is_symlink():
+    raise SystemExit('Refusing symlink at dist/Bifrost.app')
+if app.exists():
+    shutil.rmtree(app)
+(app/'Contents/MacOS').mkdir(parents=True)
+PY
+cp Resources/Info.plist "$app/Contents/Info.plist"
+cp "$binary_dir/BifrostHost" "$app/Contents/MacOS/BifrostHost"
+cp "$binary_dir/bifrost" "$app/Contents/MacOS/bifrost"
+identity="${BIFROST_SIGN_IDENTITY:--}"
+codesign --force --options runtime --sign "$identity" "$app/Contents/MacOS/bifrost"
+codesign --force --options runtime --sign "$identity" --entitlements Resources/Bifrost.entitlements "$app"
+if [[ "$identity" != "-" ]]; then
+  team="$(codesign -dv "$app" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
+  if [[ ! "$team" =~ ^[A-Z0-9]{10}$ ]]; then
+    echo 'No valid TeamIdentifier in signature; refusing an unstable signed build.' >&2
+    exit 1
+  fi
+  requirement="=designated => identifier \"io.github.oana-ffg.bifrost\" and anchor apple generic and certificate leaf[subject.OU] = \"$team\""
+  codesign --force --options runtime --sign "$identity" --entitlements Resources/Bifrost.entitlements --requirements "$requirement" "$app"
+else
+  echo 'Ad hoc build: permission grants may be lost when rebuilding. Use a stable signing identity for unattended work.' >&2
+fi
+codesign --verify --deep --strict "$app"
+if otool -L "$app/Contents/MacOS/bifrost" | grep -q EventKit; then
+  echo 'The CLI must not link EventKit: protected operations belong in the app.' >&2
+  exit 1
+fi
+printf 'Built %s\n' "$app"
