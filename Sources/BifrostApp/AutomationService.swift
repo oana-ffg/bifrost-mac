@@ -46,11 +46,11 @@ struct AutomationService {
         switch status {
         case noErr: state = "authorized"
         case OSStatus(errAEEventNotPermitted): state = "denied"
-        case OSStatus(errAEEventWouldRequireUserConsent): state = "not_requested"
+        case OSStatus(errAEEventWouldRequireUserConsent): state = "consent_required"
         case OSStatus(procNotFound): state = "target_not_running"
         default: state = "error"
         }
         if request, status != noErr { throw BridgeError("automation_permission", "Automation permission is \(state) (OSStatus \(status)). Review Bifrost in System Settings → Privacy & Security → Automation.") }
-        return ["target": target, "state": state, "osStatus": status, "note": "This checks OS permission only; it does not prove the target integration works."]
+        return ["target": target, "state": state, "osStatus": status, "note": "This checks OS permission only; consent_required does not distinguish an unrequested grant from a prior denial. It does not prove the target integration works."]
     }
 }

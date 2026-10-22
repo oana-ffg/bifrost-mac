@@ -67,7 +67,7 @@ struct LegacyCalendar {
                 left.value.0 == right.value.0 ? left.key < right.key : left.value.0 < right.value.0
             }.map { entry in
                 let event = entry.value.1
-                return                 ["calendar": event["calendar"] ?? "", "title": event["title"] ?? "", "start": event["start"] ?? "", "end": event["end"] ?? "", "isAllDay": event["isAllDay"] ?? false, "availability": event["availability"] ?? "unknown", "recurring": event["recurring"] ?? false, "recurrence": event["recurrence"] ?? NSNull(), "status": event["status"] ?? "unknown"]
+                return ["calendar": event["calendar"] ?? "", "title": event["title"] ?? "", "start": event["start"] ?? "", "end": event["end"] ?? "", "isAllDay": event["isAllDay"] ?? false, "availability": event["availability"] ?? "unknown", "recurring": event["recurring"] ?? false, "recurrence": event["recurrence"] ?? NSNull(), "status": event["status"] ?? "unknown"]
             }
         }
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!, afterTomorrow = calendar.date(byAdding: .day, value: 2, to: today)!

@@ -1,5 +1,6 @@
 import BifrostCore
 import Foundation
+import CoreFoundation
 
 func jsonText(_ value: Any) throws -> String {
     String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes, .fragmentsAllowed]), as: UTF8.self)
@@ -77,11 +78,18 @@ struct MCP {
             var id: Any = NSNull()
             do {
                 let decoded = try JSONSerialization.jsonObject(with: line)
-                if let object = decoded as? [String: Any], let requestID = object["id"], requestID is String || requestID is NSNumber { id = requestID }
+                if let object = decoded as? [String: Any], let requestID = object["id"] {
+                    let validNumber = (requestID as? NSNumber).map {
+                        CFGetTypeID($0) != CFBooleanGetTypeID() && $0.doubleValue.isFinite && $0.doubleValue.rounded() == $0.doubleValue
+                    } ?? false
+                    guard requestID is String || validNumber else {
+                        try output(["jsonrpc": "2.0", "id": NSNull(), "error": ["code": -32600, "message": "Request ID must be a string or integer"]]); continue
+                    }
+                    id = requestID
+                }
                 guard let request = decoded as? [String: Any], request["jsonrpc"] as? String == "2.0", let method = request["method"] as? String else {
                     try output(["jsonrpc": "2.0", "id": id, "error": ["code": -32600, "message": "Invalid JSON-RPC request"]]); continue
                 }
-                if let requestID = request["id"] { id = requestID }
                 let isNotification = request["id"] == nil
                 if let params = request["params"], !(params is [String: Any]) {
                     if !isNotification { try output(["jsonrpc": "2.0", "id": id, "error": ["code": -32602, "message": "params must be an object"]]) }; continue

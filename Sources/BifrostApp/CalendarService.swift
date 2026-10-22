@@ -75,20 +75,25 @@ final class CalendarService {
             selected = available.filter { ids.contains($0.calendarIdentifier) }
         } else { selected = available }
         // Passing nil to EventKit means all calendars; an actually empty selection must remain empty.
-        let events = selected.isEmpty ? [] : store.events(matching: store.predicateForEvents(withStart: query.start, end: query.end, calendars: selected))
+        let calendarTimeZone = TimeZone.current
+        // EventKit anchors floating all-day dates in the Mac's zone. Include the
+        // maximum cross-zone displacement, then filter using projected dates.
+        let padding: TimeInterval = query.timeZone == calendarTimeZone ? 0 : 2 * 86400
+        let events = selected.isEmpty ? [] : store.events(matching: store.predicateForEvents(withStart: query.start.addingTimeInterval(-padding), end: query.end.addingTimeInterval(padding), calendars: selected))
         guard events.count <= 10_000 else { throw BridgeError("result_limit", "More than 10,000 event occurrences. Use a smaller range.") }
         try requirePermission()
         let formatter = ISO8601DateFormatter(); formatter.timeZone = query.timeZone
-        let rows: [[String: Any]] = events.sorted {
-            if $0.startDate != $1.startDate { return $0.startDate < $1.startDate }
-            return ($0.eventIdentifier ?? "") < ($1.eventIdentifier ?? "")
-        }.map { event in
-            CalendarOccurrence(itemID: event.calendarItemIdentifier, seriesID: event.eventIdentifier,
+        let projected = try events.map { event in
+            try CalendarOccurrence(itemID: event.calendarItemIdentifier, seriesID: event.eventIdentifier,
                                calendarID: event.calendar.calendarIdentifier, calendarName: event.calendar.title, title: event.title ?? "",
                                start: event.startDate, end: event.endDate, occurrence: event.occurrenceDate ?? event.startDate,
                                allDay: event.isAllDay, recurring: event.hasRecurrenceRules, recurrence: recurrence(event),
-                               availability: availabilityName(event.availability), status: statusName(event.status)).row(timeZone: query.timeZone)
+                               availability: availabilityName(event.availability), status: statusName(event.status)).project(timeZone: query.timeZone, calendarTimeZone: calendarTimeZone)
         }
+        let rows = projected.filter { $0.overlaps(start: query.start, end: query.end) }.sorted {
+            if $0.start != $1.start { return $0.start < $1.start }
+            return ($0.row["id"] as? String ?? "") < ($1.row["id"] as? String ?? "")
+        }.map(\.row)
         return ["start": formatter.string(from: query.start), "end": formatter.string(from: query.end), "events": rows,
                 "timezone": query.timeZone.identifier, "calendars": selected.map(calendarRow), "freshness": "local_sync_not_verified"]
     }

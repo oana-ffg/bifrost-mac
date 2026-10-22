@@ -165,9 +165,12 @@ public final class Listener {
             let client = Darwin.accept(fd, nil, nil)
             if client < 0 {
                 let failure = errno
-                if failure == EBADF || failure == EINVAL { throw systemError("listener is closed") }
+                if failure == EINTR || failure == ECONNABORTED { continue }
+                guard failure == EMFILE || failure == ENFILE || failure == ENOBUFS || failure == ENOMEM || failure == EAGAIN else {
+                    throw systemError("accept")
+                }
                 NSLog("Bifrost accept failed (%d); retrying", failure)
-                if failure == EMFILE || failure == ENFILE || failure == ENOBUFS || failure == ENOMEM { Thread.sleep(forTimeInterval: 0.25) }
+                Thread.sleep(forTimeInterval: 0.25)
                 continue
             }
             guard fcntl(client, F_SETFD, FD_CLOEXEC) == 0 else {

@@ -47,7 +47,7 @@ Request Calendar access from the setup window, or run:
 
 Approve the macOS prompt. If access was denied previously, review Bifrost in System Settings → Privacy & Security → Calendars. A start-at-login registration can require approval in System Settings → General → Login Items.
 
-`doctor` runs a real, bounded Calendar query. It exits nonzero on missing permission, absent calendar coverage, unstable ad hoc signing, a wrong running-app location, or a required login item that is not enabled. Zero events is fine when calendars were actually covered. Calendar data is the locally synced copy; server sync freshness is not verified.
+`doctor` always outputs JSON; `--json` is accepted for command-line compatibility. It runs a real, bounded Calendar query. It exits nonzero on missing permission, absent calendar coverage, unstable ad hoc signing, a wrong running-app location, or a required login item that is not enabled. Zero events is fine when calendars were actually covered. Calendar data is the locally synced copy; server sync freshness is not verified.
 
 There is no supported command to silently grant macOS privacy permissions. After FileVault reboot, a user must log in before a user-session app can run.
 
@@ -78,7 +78,7 @@ Tools: `bifrost_status`, `bifrost_doctor`, `bifrost_calendars`, `bifrost_events`
 
 The `apple-calendar` subcommand preserves the existing skill’s argument and JSON shape. Its default time zone is the Mac’s current zone; callers needing a fixed zone should pass `--timezone`. It also includes event status so canceled meetings remain distinguishable.
 
-For CLI usage and event-query arguments, run the installed binary with `--help`. Event ranges have an exclusive end and a maximum length of 366 days. Use `--timezone` to select an IANA time zone; the app's current zone is the default. Calendar IDs are local-store identifiers, and occurrence IDs are not durable cross-device IDs.
+For CLI usage and event-query arguments, run the installed binary with `--help`. Event ranges have an exclusive end and a maximum length of 366 days. Use `--timezone` to select an IANA time zone; the app's current zone is the default. All-day events retain their calendar dates in every output time zone; their timestamps represent those dates in that zone. Timed events retain their original instants. Calendar IDs are local-store identifiers, and occurrence IDs are not durable cross-device IDs. All-day IDs can change when the Mac's own time zone changes because EventKit reanchors their local-midnight occurrence.
 
 ## Automation and Computer History
 

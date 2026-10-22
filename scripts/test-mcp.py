@@ -29,3 +29,18 @@ assert by_id[None]["error"]["code"] == -32700
 assert len(rows) == 8
 assert not run.stderr, run.stderr
 print("MCP lifecycle, errors, schemas and stdout purity passed")
+
+# Invalid IDs must not be echoed, interpreted as notifications, or affect later requests.
+invalid_ids = [{"x": 1}, True, False, [], 1.5, None]
+id_messages = [{"jsonrpc": "2.0", "id": value, "method": "ping"} for value in invalid_ids]
+id_messages += [{"jsonrpc": "2.0", "id": "string-id", "method": "ping"}, {"jsonrpc": "2.0", "id": -1, "method": "ping"}]
+id_run = subprocess.run([binary, "mcp"], input="\n \t\r\n" + "\n".join(json.dumps(x) for x in id_messages) + "\n", text=True, capture_output=True, timeout=15, check=True)
+id_rows = [json.loads(line) for line in id_run.stdout.splitlines()]
+assert len(id_rows) == len(id_messages)
+for row in id_rows[:len(invalid_ids)]:
+    assert row["id"] is None, row
+    assert row["error"]["code"] == -32600, row
+assert id_rows[-2] == {"jsonrpc": "2.0", "id": "string-id", "result": {}}
+assert id_rows[-1] == {"jsonrpc": "2.0", "id": -1, "result": {}}
+assert not id_run.stderr, id_run.stderr
+print("MCP invalid-ID rejection, valid-ID preservation and blank lines passed")

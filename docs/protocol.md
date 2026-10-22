@@ -16,9 +16,11 @@ At most 16 connection workers are active. Initial framing has a five-second dead
 - `calendar.list`: identifiers, names and sources. Requires prior Calendar approval.
 - `calendar.events`: required `start` and `end` ISO 8601 timestamps, end exclusive; optional nonempty `calendarIDs` array and IANA `timezone`. Maximum 366 days and 10,000 occurrences. Includes covered calendars and `local_sync_not_verified` freshness.
 - `permissions.request`: explicit setup only. `capability: calendar`, or `capability: automation` with `target` bundle identifier. Denial/timeout is a failure.
-- `automation.check`: `target` bundle identifier of a running app. No prompt. Reports OS authorization independently of vendor functionality.
+- `automation.check`: `target` bundle identifier of a running app. No prompt. Reports OS authorization independently of vendor functionality. `consent_required` preserves the OS response without claiming whether permission was never requested or previously denied.
 - `ui.open`: explicit CLI/GUI setup only; opens the settings window without changing background service operation.
 - `login.set`: explicit setup with `enabled` boolean. Result reports whether registration is enabled or still needs approval.
+
+All-day Calendar values preserve the civil dates supplied by EventKit in the Mac's time zone. Output timestamps and range membership use those dates in the requested zone, including daylight-saving transitions; timed events retain their original instants. The occurrence ID retains its EventKit anchor and is independent of the requested output zone.
 
 There is no profile configuration, command runner, stdio proxy, or remote transport in version 1.
 

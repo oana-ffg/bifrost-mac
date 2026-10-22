@@ -8,7 +8,7 @@ Bifrost: a local Mac companion for AI agents.
   bifrost settings                      Open the on-demand setup window
   bifrost login enable|disable          Configure start at login
   bifrost status                        Permission and app status (JSON)
-  bifrost doctor [--json] [--require calendar,login]
+  bifrost doctor [--json] [--require calendar,login]  Always JSON; --json is a compatibility option
   bifrost apple-calendar [OPTIONS]       Existing Calendar skill compatibility
   bifrost calendars                     List calendar identifiers (JSON)
   bifrost events --start ISO8601 --end ISO8601 [--calendar-id ID ...]

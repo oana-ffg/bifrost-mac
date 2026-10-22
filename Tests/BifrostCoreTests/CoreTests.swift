@@ -22,13 +22,59 @@ final class CoreTests: XCTestCase {
         func value(_ occurrence: Date) -> CalendarOccurrence {
             CalendarOccurrence(itemID: "series", seriesID: "same-series", calendarID: "calendar", calendarName: "Calendar", title: "An event", start: first, end: end, occurrence: occurrence, allDay: true, recurring: true, recurrence: "weekly", availability: "busy", status: "canceled")
         }
-        let firstRow = value(first).row(timeZone: zone), next = value(first.addingTimeInterval(7 * 86400)).row(timeZone: zone)
+        let firstRow = try value(first).project(timeZone: zone, calendarTimeZone: zone).row, next = try value(first.addingTimeInterval(7 * 86400)).project(timeZone: zone, calendarTimeZone: zone).row
         XCTAssertEqual(firstRow["startDate"] as? String, "2026-10-23")
         XCTAssertEqual(firstRow["endDateExclusive"] as? String, "2026-10-24")
         XCTAssertEqual(firstRow["start"] as? String, "2026-10-23T00:00:00+02:00")
         XCTAssertEqual(firstRow["status"] as? String, "canceled")
         XCTAssertNotEqual(firstRow["id"] as? String, next["id"] as? String)
-        XCTAssertEqual(firstRow["id"] as? String, value(first).row(timeZone: TimeZone(secondsFromGMT: 0)!)["id"] as? String)
+        XCTAssertEqual(firstRow["id"] as? String, try value(first).project(timeZone: TimeZone(secondsFromGMT: 0)!, calendarTimeZone: zone).row["id"] as? String)
+    }
+    func testAllDayDatesDoNotMoveToThePreviousDayInAnotherZone() throws {
+        let iso = ISO8601DateFormatter()
+        let start = try XCTUnwrap(iso.date(from: "2026-10-23T00:00:00+02:00"))
+        let end = try XCTUnwrap(iso.date(from: "2026-10-24T00:00:00+02:00"))
+        let event = CalendarOccurrence(itemID: "all-day", seriesID: nil, calendarID: "calendar", calendarName: "Calendar", title: "An event", start: start, end: end, occurrence: start, allDay: true, recurring: false, recurrence: nil, availability: "free", status: "confirmed")
+        let sourceZone = try XCTUnwrap(TimeZone(identifier: "Europe/Copenhagen"))
+        let outputZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let projection = try event.project(timeZone: outputZone, calendarTimeZone: sourceZone)
+        let row = projection.row
+        XCTAssertFalse(projection.overlaps(start: try XCTUnwrap(iso.date(from: "2026-10-22T00:00:00-04:00")), end: try XCTUnwrap(iso.date(from: "2026-10-23T00:00:00-04:00"))))
+        XCTAssertTrue(projection.overlaps(start: try XCTUnwrap(iso.date(from: "2026-10-23T00:00:00-04:00")), end: try XCTUnwrap(iso.date(from: "2026-10-24T00:00:00-04:00"))))
+        XCTAssertFalse(projection.overlaps(start: try XCTUnwrap(iso.date(from: "2026-10-24T00:00:00-04:00")), end: try XCTUnwrap(iso.date(from: "2026-10-25T00:00:00-04:00"))))
+        XCTAssertEqual(row["startDate"] as? String, "2026-10-23")
+        XCTAssertEqual(row["endDateExclusive"] as? String, "2026-10-24")
+        XCTAssertEqual(row["start"] as? String, "2026-10-23T00:00:00-04:00")
+    }
+    func testAllDayProjectionUsesCivilDaysAcrossDaylightSavingAndKeepsTimedInstants() throws {
+        let iso = ISO8601DateFormatter()
+        let source = try XCTUnwrap(TimeZone(identifier: "Europe/Copenhagen")), output = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let start = try XCTUnwrap(iso.date(from: "2026-11-01T00:00:00+01:00")), end = try XCTUnwrap(iso.date(from: "2026-11-02T00:00:00+01:00"))
+        func event(allDay: Bool) -> CalendarOccurrence {
+            CalendarOccurrence(itemID: "event", seriesID: nil, calendarID: "calendar", calendarName: "Calendar", title: "An event", start: start, end: end, occurrence: start, allDay: allDay, recurring: false, recurrence: nil, availability: "free", status: "confirmed")
+        }
+        let allDay = try event(allDay: true).project(timeZone: output, calendarTimeZone: source)
+        XCTAssertEqual(allDay.start, iso.date(from: "2026-11-01T00:00:00-04:00"))
+        XCTAssertEqual(allDay.end, iso.date(from: "2026-11-02T00:00:00-05:00"))
+        XCTAssertEqual(allDay.end.timeIntervalSince(allDay.start), 25 * 3600)
+        let timed = try event(allDay: false).project(timeZone: output, calendarTimeZone: source)
+        XCTAssertEqual(timed.start, start); XCTAssertEqual(timed.end, end)
+        XCTAssertEqual(timed.row["start"] as? String, "2026-10-31T19:00:00-04:00")
+        let point = CalendarOccurrenceProjection(start: start, end: start, row: [:])
+        XCTAssertTrue(point.overlaps(start: start, end: end))
+        XCTAssertFalse(point.overlaps(start: start.addingTimeInterval(-60), end: start))
+    }
+    func testInclusiveAllDayEndCoversTheFinalCivilDay() throws {
+        let iso = ISO8601DateFormatter()
+        let source = try XCTUnwrap(TimeZone(identifier: "Europe/Copenhagen")), output = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let start = try XCTUnwrap(iso.date(from: "2026-10-23T00:00:00+02:00")), inclusiveEnd = try XCTUnwrap(iso.date(from: "2026-10-23T23:59:59+02:00"))
+        let event = CalendarOccurrence(itemID: "event", seriesID: nil, calendarID: "calendar", calendarName: "Calendar", title: "An event", start: start, end: inclusiveEnd, occurrence: start, allDay: true, recurring: false, recurrence: nil, availability: "free", status: "confirmed")
+        let value = try event.project(timeZone: output, calendarTimeZone: source)
+        XCTAssertEqual(value.row["startDate"] as? String, "2026-10-23")
+        XCTAssertEqual(value.row["endDateExclusive"] as? String, "2026-10-24")
+        XCTAssertEqual(value.end, iso.date(from: "2026-10-24T00:00:00-04:00"))
+        XCTAssertTrue(value.overlaps(start: try XCTUnwrap(iso.date(from: "2026-10-23T23:59:59-04:00")), end: try XCTUnwrap(iso.date(from: "2026-10-24T00:00:00-04:00"))))
+        XCTAssertFalse(value.overlaps(start: value.end, end: value.end.addingTimeInterval(60)))
     }
     func testFailureCannotBecomeEmptySuccess() throws {
         XCTAssertThrowsError(try Wire.result(Wire.failure(BridgeError("calendar_permission", "Denied")))) { error in

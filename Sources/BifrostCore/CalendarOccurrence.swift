@@ -21,16 +21,50 @@ public struct CalendarOccurrence {
         self.start = start; self.end = end; self.occurrence = occurrence; self.allDay = allDay; self.recurring = recurring
         self.recurrence = recurrence; self.availability = availability; self.status = status
     }
-    public func row(timeZone: TimeZone) -> [String: Any] {
+    public func project(timeZone: TimeZone, calendarTimeZone: TimeZone) throws -> CalendarOccurrenceProjection {
+        var sourceCalendar = Calendar(identifier: .gregorian); sourceCalendar.timeZone = calendarTimeZone
+        var outputCalendar = Calendar(identifier: .gregorian); outputCalendar.timeZone = timeZone
+        func projected(_ date: Date) throws -> Date {
+            guard allDay else { return date }
+            // All-day events are civil dates, not instants to shift across time zones.
+            let components = sourceCalendar.dateComponents([.era, .year, .month, .day], from: date)
+            guard let result = outputCalendar.date(from: components),
+                  outputCalendar.dateComponents([.era, .year, .month, .day], from: result) == components else {
+                throw BridgeError("calendar_date", "An all-day date cannot be represented in the requested time zone.")
+            }
+            return result
+        }
+        let calendarEnd: Date
+        if allDay, end != sourceCalendar.startOfDay(for: end) {
+            // EventKit can return inclusive 23:59:59 ends. Preserve the full
+            // final civil day while exposing one consistent exclusive boundary.
+            guard let boundary = sourceCalendar.date(byAdding: .day, value: 1, to: sourceCalendar.startOfDay(for: end)) else {
+                throw BridgeError("calendar_date", "Cannot calculate the all-day event's exclusive end date.")
+            }
+            calendarEnd = boundary
+        } else { calendarEnd = end }
+        let projectedStart = try projected(start), projectedEnd = try projected(calendarEnd)
+
         let formatter = ISO8601DateFormatter(); formatter.timeZone = timeZone
         let day = DateFormatter(); day.locale = Locale(identifier: "en_US_POSIX"); day.calendar = Calendar(identifier: .gregorian); day.timeZone = timeZone; day.dateFormat = "yyyy-MM-dd"
         // Use UTC for the identity so selecting a different output zone doesn't change an occurrence's ID.
         let identity = ISO8601DateFormatter()
-        return ["id": calendarID + "/" + itemID + "/" + identity.string(from: occurrence),
-                "seriesID": seriesID as Any? ?? NSNull(), "occurrenceDate": formatter.string(from: occurrence),
+        let row: [String: Any] = ["id": calendarID + "/" + itemID + "/" + identity.string(from: occurrence),
+                "seriesID": seriesID as Any? ?? NSNull(), "occurrenceDate": formatter.string(from: try projected(occurrence)),
                 "calendarID": calendarID, "calendar": calendarName, "title": title,
-                "start": formatter.string(from: start), "end": formatter.string(from: end), "startDate": day.string(from: start),
-                "endDateExclusive": allDay ? day.string(from: end) as Any : NSNull(),
+                "start": formatter.string(from: projectedStart), "end": formatter.string(from: projectedEnd), "startDate": day.string(from: projectedStart),
+                "endDateExclusive": allDay ? day.string(from: projectedEnd) as Any : NSNull(),
                 "isAllDay": allDay, "recurring": recurring, "recurrence": recurrence as Any? ?? NSNull(), "availability": availability, "status": status]
+        return CalendarOccurrenceProjection(start: projectedStart, end: projectedEnd, row: row)
+    }
+}
+
+public struct CalendarOccurrenceProjection {
+    public let start: Date
+    public let end: Date
+    public let row: [String: Any]
+
+    public func overlaps(start rangeStart: Date, end rangeEnd: Date) -> Bool {
+        start < rangeEnd && (end > rangeStart || (start == end && start >= rangeStart))
     }
 }
