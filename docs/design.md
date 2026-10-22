@@ -1,6 +1,6 @@
 # Bifrost design
 
-Status: implemented core, on-device acceptance in progress. See acceptance.md for remaining gates.
+Status: initial Calendar bridge implemented and verified on device. Follow-up Claude review is deferred until quota is available; Computer History remains unresolved. See acceptance.md for the verified scope.
 
 ## User requirement
 
@@ -10,7 +10,7 @@ The companion is useful independently of an upstream T3 packaging fix: it owns n
 
 ## Architecture
 
-`Bifrost.app` is an AppKit menu-bar app installed under `/Applications`. LaunchServices or its user-approved login item starts it independently of T3. The `bifrost` executable is only a client and stdio MCP adapter; it does not link EventKit. All protected Calendar operations occur inside the app.
+`Bifrost.app` is an AppKit background app installed under `/Applications`. It has no menu-bar item or Dock icon. The settings and diagnostics windows open only on explicit request; closing them keeps the service alive. LaunchServices or its user-approved login item starts it independently of T3. The `bifrost` executable is only a client and stdio MCP adapter; it does not link EventKit. All protected Calendar operations occur inside the app.
 
 A Unix socket under the user's private `.bifrost/run` directory provides the local interface. The directory is mode 0700 and socket mode 0600. Both ends check peer UID. The app holds a lifetime file lock, checks ownership/type before removing stale sockets, and removes only its own socket inode. Framing, deadlines and concurrency are bounded. A disconnected client is a connection failure and does not terminate the service.
 
@@ -24,7 +24,7 @@ Queries use exclusive-end ISO 8601 ranges, at most 366 days, with at most 10,000
 
 ## Setup and unattended operation
 
-Use the menu or CLI to approve Calendar and target-specific Automation access. Read-only MCP tools never request permission. `doctor` probes required sources with real bounded operations and exits nonzero when requirements are unmet. It checks the app location, stable signing, Calendar coverage, and the login item when requested. A running process or permission toggle alone is insufficient proof of a working integration.
+Use the on-demand settings window or CLI to approve Calendar and target-specific Automation access. Read-only MCP tools never request permission. `doctor` probes required sources with real bounded operations and exits nonzero when requirements are unmet. It checks the app location, stable signing, Calendar coverage, and the login item when requested. A running process or permission toggle alone is insufficient proof of a working integration.
 
 Automation permission calls use a separate bounded coordinator because the macOS API can wait on consent even for a non-prompting check. The CLI request deadline is not presented as cancellation of the underlying OS call. At most four OS calls can remain pending, and duplicate checks are coalesced.
 

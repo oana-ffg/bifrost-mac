@@ -19,6 +19,8 @@ final class AccessLog {
 final class Service {
     let calendar = CalendarService()
     let access = AccessLog()
+    private let openSettings: () -> Void
+    init(openSettings: @escaping () -> Void) { self.openSettings = openSettings }
     func status() -> [String: Any] {
         var code: SecCode?
         var details: CFDictionary?
@@ -34,7 +36,7 @@ final class Service {
         case .notFound: login = "not_found"
         @unknown default: login = "unknown"
         }
-        return ["version": Wire.appVersion, "pid": ProcessInfo.processInfo.processIdentifier,
+        return ["version": Wire.appVersion, "mode": "background", "pid": ProcessInfo.processInfo.processIdentifier,
                 "appPath": Bundle.main.bundlePath, "installedPathMatches": Bundle.main.bundlePath == "/Applications/Bifrost.app",
                 "calendar": CalendarService.permission, "loginItem": login,
                 "signing": ["available": signed, "valid": validSignature, "identifier": signing[kSecCodeInfoIdentifier as String] as? String ?? "unknown", "team": signing[kSecCodeInfoTeamIdentifier as String] as? String ?? "ad_hoc"],
@@ -49,6 +51,10 @@ final class Service {
             guard params.isEmpty else { throw BridgeError("invalid_arguments", "calendar.list takes no arguments.") }
             return try calendar.list()
         case "calendar.events": return try calendar.events(params)
+        case "ui.open":
+            guard params.isEmpty else { throw BridgeError("invalid_arguments", "ui.open takes no arguments.") }
+            DispatchQueue.main.async { self.openSettings() }
+            return ["opened": true]
         case "login.set":
             guard params.count == 1, let enabled = params["enabled"] as? Bool else { throw BridgeError("invalid_arguments", "enabled must be a boolean.") }
             if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
@@ -117,35 +123,53 @@ final class Server {
     }
 }
 
-final class Delegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    let service = Service()
+final class Delegate: NSObject, NSApplicationDelegate {
+    lazy var service = Service { [weak self] in self?.settings() }
     var server: Server?
-    var item: NSStatusItem!
-    var window: NSWindow?
+    var settingsWindow: NSWindow?
+    var diagnosticsWindow: NSWindow?
     func applicationDidFinishLaunching(_ notification: Notification) {
         do { server = try Server(service: service); server!.start() }
-        catch { alert("Bifrost could not start", error.localizedDescription); NSApp.terminate(nil); return }
-        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "Bifrost"
-        let menu = NSMenu(); menu.delegate = self; item.menu = menu; rebuild(menu)
+        catch { alert("Bifrost could not start", error.localizedDescription); NSApp.terminate(nil) }
     }
-    func menuWillOpen(_ menu: NSMenu) { rebuild(menu) }
-    func rebuild(_ menu: NSMenu) {
-        menu.removeAllItems()
-        let status = NSMenuItem(title: "Calendar: \(CalendarService.permission)", action: nil, keyEquivalent: ""); status.isEnabled = false; menu.addItem(status)
-        add(menu, "Grant Calendar Access…", #selector(grant))
-        add(menu, "Grant App Automation…", #selector(automation))
-        add(menu, "Health and Recent Access…", #selector(health))
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        settings(); return true
+    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func alert(_ title: String, _ detail: String) {
+        let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
+        NSApp.activate(ignoringOtherApps: true); alert.runModal()
+    }
+    private func button(_ title: String, _ action: Selector) -> NSButton { NSButton(title: title, target: self, action: action) }
+    @objc func settings() {
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 590, height: 370))
+        let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 16; stack.translatesAutoresizingMaskIntoConstraints = false
+        let title = NSTextField(labelWithString: "Bifrost"); title.font = .systemFont(ofSize: 26, weight: .semibold)
+        let explanation = NSTextField(wrappingLabelWithString: "Your Mac companion runs quietly in the background. Closing this window keeps your agents connected.")
+        let calendar = NSTextField(labelWithString: "Calendar access: " + CalendarService.permission.replacingOccurrences(of: "_", with: " "))
         let enabled = SMAppService.mainApp.status == .enabled
-        add(menu, enabled ? "Disable Start at Login" : "Enable Start at Login", #selector(login))
-        menu.addItem(.separator()); add(menu, "Quit Bifrost", #selector(quit))
+        let login = NSTextField(labelWithString: "Start at login: " + (enabled ? "enabled" : "not enabled"))
+        for view in [title, explanation, calendar, login] { stack.addArrangedSubview(view) }
+        let permissions = NSStackView(views: [button("Calendar Access…", #selector(grant)), button("App Automation…", #selector(automation))]); permissions.spacing = 10
+        stack.addArrangedSubview(permissions)
+        let actions = NSStackView(views: [button(enabled ? "Disable Start at Login" : "Enable Start at Login", #selector(toggleLogin)), button("Diagnostics…", #selector(diagnostics)), button("Quit Bifrost", #selector(quit))]); actions.spacing = 10
+        stack.addArrangedSubview(actions)
+        content.addSubview(stack)
+        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24), stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24), stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 24)])
+        if settingsWindow == nil {
+            settingsWindow = NSWindow(contentRect: content.frame, styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            settingsWindow?.title = "Bifrost Settings"; settingsWindow?.isReleasedWhenClosed = false; settingsWindow?.center()
+        }
+        settingsWindow?.contentView = content; settingsWindow?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
-    func add(_ menu: NSMenu, _ title: String, _ action: Selector) { let entry = NSMenuItem(title: title, action: action, keyEquivalent: ""); entry.target = self; menu.addItem(entry) }
-    func alert(_ title: String, _ detail: String) { let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail; NSApp.activate(ignoringOtherApps: true); alert.runModal() }
     @objc func grant() {
         NSApp.activate(ignoringOtherApps: true)
         service.calendar.store.requestFullAccessToEvents { allowed, error in
-            DispatchQueue.main.async { if let error = error { self.alert("Calendar access failed", error.localizedDescription) } else if !allowed { self.alert("Calendar access was not granted", "Allow Bifrost in System Settings → Privacy & Security → Calendars, then run bifrost doctor --require calendar.") } }
+            DispatchQueue.main.async {
+                if let error = error { self.alert("Calendar access failed", error.localizedDescription) }
+                else if !allowed { self.alert("Calendar access was not granted", "Allow Bifrost in System Settings → Privacy & Security → Calendars, then run the Calendar preflight.") }
+                self.settings()
+            }
         }
     }
     @objc func automation() {
@@ -157,22 +181,25 @@ final class Delegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard dialog.runModal() == .alertFirstButtonReturn else { return }
         let target = field.stringValue
         DispatchQueue.global().async {
-            do { _ = try AutomationService.check(["target": target], request: true) }
+            do { _ = try AutomationService.check(["target": target], request: true); DispatchQueue.main.async { self.alert("Automation access allowed", "Bifrost can communicate with the selected app. The integration itself still needs to be verified.") } }
             catch { DispatchQueue.main.async { self.alert("Automation setup failed", error.localizedDescription) } }
         }
     }
-    @objc func health() {
+    @objc func diagnostics() {
         do {
             let data = try JSONSerialization.data(withJSONObject: ["health": service.status(), "recentAccess": service.access.read()], options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
             let text = NSTextView(frame: NSRect(x: 0, y: 0, width: 680, height: 500)); text.isEditable = false; text.isSelectable = true; text.font = .monospacedSystemFont(ofSize: 12, weight: .regular); text.string = String(decoding: data, as: UTF8.self)
             let scroll = NSScrollView(frame: text.frame); scroll.hasVerticalScroller = true; scroll.documentView = text; text.isVerticallyResizable = true; text.autoresizingMask = [.width]
-            if window == nil { window = NSWindow(contentRect: scroll.frame, styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false); window?.title = "Bifrost Health and Recent Access"; window?.isReleasedWhenClosed = false; window?.center() }
-            window?.contentView = scroll; window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
-        } catch { alert("Health display failed", error.localizedDescription) }
+            if diagnosticsWindow == nil { diagnosticsWindow = NSWindow(contentRect: scroll.frame, styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false); diagnosticsWindow?.title = "Bifrost Diagnostics"; diagnosticsWindow?.isReleasedWhenClosed = false; diagnosticsWindow?.center() }
+            diagnosticsWindow?.contentView = scroll; diagnosticsWindow?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        } catch { alert("Diagnostics display failed", error.localizedDescription) }
     }
-    @objc func login() {
-        do { if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() } else { try SMAppService.mainApp.register(); if SMAppService.mainApp.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() } } }
-        catch { alert("Login item change failed", error.localizedDescription) }
+    @objc func toggleLogin() {
+        do {
+            if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
+            else { try SMAppService.mainApp.register(); if SMAppService.mainApp.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() } }
+            settings()
+        } catch { alert("Login item change failed", error.localizedDescription) }
     }
     @objc func quit() { NSApp.terminate(nil) }
 }

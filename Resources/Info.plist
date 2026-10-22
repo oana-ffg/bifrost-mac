@@ -1,15 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>io.github.oana-ffg.bifrost</string>
-<key>CFBundleExecutable</key><string>BifrostHost</string>
-<key>CFBundleName</key><string>Bifrost</string>
-<key>CFBundleDisplayName</key><string>Bifrost</string>
-<key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
-<key>LSMinimumSystemVersion</key><string>14.0</string>
-<key>LSUIElement</key><true/>
-<key>NSCalendarsFullAccessUsageDescription</key><string>Bifrost lets your local AI agents read your calendars for agendas and unattended reports.</string>
-<key>NSAppleEventsUsageDescription</key><string>Bifrost communicates with Mac apps for your explicitly configured local integrations.</string>
-</dict></plist>
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Bifrost</string>
+	<key>CFBundleExecutable</key>
+	<string>BifrostHost</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.oana-ffg.bifrost</string>
+	<key>CFBundleName</key>
+	<string>Bifrost</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.1</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Bifrost communicates with Mac apps for your explicitly configured local integrations.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Bifrost lets your local AI agents read your calendars for agendas and unattended reports.</string>
+</dict>
+</plist>

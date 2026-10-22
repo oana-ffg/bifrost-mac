@@ -5,6 +5,7 @@ import Foundation
 let help = """
 Bifrost: a local Mac companion for AI agents.
   bifrost start                         Start /Applications/Bifrost.app independently
+  bifrost settings                      Open the on-demand setup window
   bifrost login enable|disable          Configure start at login
   bifrost status                        Permission and app status (JSON)
   bifrost doctor [--json] [--require calendar,login]
@@ -35,10 +36,10 @@ func events(_ args: [String]) throws -> [String: Any] {
     _ = try CalendarQuery(params)
     return params
 }
-func start() throws {
+func start(report: Bool = true) throws {
     let url = URL(fileURLWithPath: "/Applications/Bifrost.app")
     guard FileManager.default.fileExists(atPath: url.path) else { throw BridgeError("not_installed", "Install Bifrost.app to /Applications first.") }
-    do { _ = try BridgeClient.call("status", timeout: 1); try output(["started": true]); return }
+    do { _ = try BridgeClient.call("status", timeout: 1); if report { try output(["started": true]) }; return }
     catch { if (error as? BridgeError)?.code == "sandbox_blocked" { throw error } }
     let completed = DispatchSemaphore(value: 0)
     let resultLock = NSLock()
@@ -50,7 +51,7 @@ func start() throws {
     if let launchError = launchError { throw launchError }
     let deadline = Date().addingTimeInterval(15)
     while Date() < deadline {
-        do { _ = try BridgeClient.call("status", timeout: 1); try output(["started": true]); return }
+        do { _ = try BridgeClient.call("status", timeout: 1); if report { try output(["started": true]) }; return }
         catch { if (error as? BridgeError)?.code == "sandbox_blocked" { throw error }; if Date().addingTimeInterval(0.1) >= deadline { throw error }; RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
     }
     throw BridgeError("launch_timeout", "Bifrost started but its socket did not become ready.")
@@ -62,6 +63,9 @@ do {
     switch command {
     case "help", "--help", "-h": print(help)
     case "start": guard rest.isEmpty else { throw BridgeError("invalid_arguments", "start takes no arguments.") }; try start()
+    case "settings":
+        guard rest.isEmpty else { throw BridgeError("invalid_arguments", "settings takes no arguments.") }
+        try start(report: false); try output(BridgeClient.call("ui.open"))
     case "status", "calendars":
         guard rest.isEmpty else { throw BridgeError("invalid_arguments", "This command takes no arguments.") }
         try output(BridgeClient.call(command == "status" ? "status" : "calendar.list"))

@@ -8,11 +8,11 @@ Bifrost is an early local-development release. Calendar permission and a logged-
 
 ## What works in this release
 
-- A signed, independently running menu-bar app owns EventKit access.
+- A signed, independently running background app owns EventKit access.
 - Read-only Calendar listing and event queries, with recurrence expansion, time zones, all-day dates, source coverage and explicit permission errors.
 - A CLI and stdio MCP adapter with status, Calendar and unattended preflight tools.
 - Explicit Calendar and per-app Automation permission setup. Ordinary reads never request permission.
-- Start-at-login registration and a metadata-only recent-access view. Event contents are not logged.
+- Start-at-login registration and an on-demand settings/diagnostics window with a metadata-only recent-access view. Event contents are not logged.
 
 Accessibility control, screenshots, Reminders, Full Disk Access and a generic integration proxy are not implemented. Those require separate work and verification; a permission declaration alone is not an integration.
 
@@ -35,7 +35,9 @@ The installer requires the running app to be quit first. It archives a previous 
 
 ## Setup
 
-Open Bifrost's menu and choose **Grant Calendar Access**, or run:
+Bifrost runs without a menu-bar item or Dock icon. Run `/Applications/Bifrost.app/Contents/MacOS/bifrost settings` to open its setup window when needed. Closing that window keeps the service running.
+
+Request Calendar access from the setup window, or run:
 
 ```sh
 /Applications/Bifrost.app/Contents/MacOS/bifrost permissions request calendar

@@ -5,7 +5,7 @@ app="$PWD/dist/Bifrost.app"
 if [[ ! -d "$app" ]]; then echo 'Run scripts/build first.' >&2; exit 1; fi
 codesign --verify --deep --strict "$app"
 if pgrep -f '^/Applications/Bifrost.app/Contents/MacOS/(Bifrost|BifrostHost)$' >/dev/null; then
-  echo 'Quit Bifrost using its menu before installing. Active requests will not be interrupted automatically.' >&2
+  echo 'Quit Bifrost from its settings window before installing. Active requests will not be interrupted automatically.' >&2
   exit 1
 fi
 if [[ -L /Applications/Bifrost.app ]]; then echo 'Refusing symlink at /Applications/Bifrost.app.' >&2; exit 1; fi

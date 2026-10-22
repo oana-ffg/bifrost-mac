@@ -1,40 +1,33 @@
-# Acceptance checks
+# Acceptance and remaining gates
 
-This is the release checklist, not a record of completed verification.
+This records the scope of the initial implementation. Real-device evidence stays private; public documentation records outcomes without personal Calendar contents.
 
-## Build and public hygiene
+## Verified
 
-- Build with the documented minimum Swift/macOS versions; run unit and integration tests.
-- Verify the installed app signature, signing requirement, privacy strings and automation entitlement.
-- Confirm tracked source contains no user paths, account IDs, signing certificates, secrets, calendar/history output, or local profiles.
-- Confirm the public repository's license and documentation describe what is actually implemented and tested.
+- Swift tests, MCP lifecycle/error tests, tracked-source privacy checks, resource/entitlement validation and CLI linkage checks pass. Public macOS CI builds and checks the project.
+- The installed app is signed with a stable Team-OU requirement, has the required Hardened Runtime resource entitlements, and runs independently through LaunchServices.
+- Before Calendar approval, reads return an explicit error without prompting or reporting an empty agenda. After explicit approval, the real Calendar preflight passes.
+- Real native, compatibility and MCP queries match over a date range containing all-day and recurring occurrences. Occurrence IDs remain distinct, all-day dates follow the requested time zone, and unknown calendar IDs fail.
+- Restarting the app preserves the grant and passes a new real Calendar query. Start-at-login is enabled in the verified local installation.
+- The canonical Calendar skill routing was independently reviewed by Claude and merged through agentfiles PR #27. The live plan changed only the four Calendar skill/documentation files across the two harnesses. Prior outputs were backed up, both live wrappers return matching real output, and Ratatoskr reports no pending changes or conflicts.
+- Both provider user configurations contain the native stdio MCP entry, with unrelated settings preserved. The adapter-to-installed-app path was exercised from T3 with approved host access. A sandboxed direct CLI is explicitly reported as blocked rather than mistaken for a stopped app.
 
-## Permission boundary
+## Background presentation
 
-- Start the installed app through LaunchServices, independently of the invoking agent process.
-- Call status from T3. Denied or not-yet-requested permissions must be explicit.
-- Before Calendar authorization, a native read fails promptly without a consent prompt and without an empty-success result.
-- Through explicit setup, request Calendar access. Confirm macOS names Bifrost in its prompt and System Settings.
-- Query real events from T3 through the CLI and MCP adapter. Compare the same range directly through a configured EventKit integration, without persisting private content in source or public logs.
-- Verify recurrence expansion for a real recurring series if one exists. Do not invent events merely to claim coverage.
-- Preflight checks must fail for a missing required permission/profile and return a nonzero process status.
-- Restart the app and repeat preflight and reads. Verify the signing requirement stays the same between builds with the same identity.
+Bifrost runs without a persistent menu-bar item or Dock icon. The CLI starts it without activation. `bifrost settings` explicitly opens the setup window; reopening the running app also opens settings. Closing settings leaves the service running. The CLI remains available for permission and startup setup.
 
-## Existing integrations
+## Remaining gates
 
-- Use a fixture to verify proxy initialization, binary/multiline stdio, stderr separation, EOF, child failure, cancellation and concurrent sessions.
-- Register the actual installed Computer History client in local-only profiles.
-- Through the proxy perform initialize, tools/list, then computer_history_status. Inspect whether the bootstrap succeeds; never infer success from an Automation grant alone.
-- Do not change observation policies, start/stop the recorder or substitute filesystem freshness for successful live status.
-- If the vendor client does not work through this ownership boundary, retain the failure and document the exact error. Do not claim it fixed.
+- A fresh Claude review of the final implementation, including background presentation, is deferred until provider quota is available. Prior design/implementation/routing reviews and their fixes are recorded in design.md; this is not a claim that the final revision has that additional review.
+- Fresh provider sessions should verify native MCP tool discovery after configuration/reconnection. An explicit host-access CLI test is not proof of every provider sandbox or live session's tool loading.
+- Computer History is not recovered. The preliminary app-owned test proved independent TCC attribution and vendor MCP initialization, but status returned `bootstrapTimedOut`; OS Automation consent and separate vendor parent checks still require investigation. No generic proxy, private API, or identity workaround is included.
+- Calendar server sync freshness is not verified. The bridge reads EventKit's locally synced copy.
+- The earlier failed nightly run retains its own unfinished work. Calendar source recovery does not complete, publish or settle that run.
 
-## Unattended integration
+## Outside this release
 
-- Configure both agent harnesses to find the native MCP server and the vendor proxy as appropriate, preserving unrelated configuration with a before/after comparison.
-- Route the existing local Calendar helper through Bifrost with compatibility for its current arguments/output, via a separately reviewed change to the canonical agentfiles source.
-- Run the actual nightly source preflight through the same paths it will use unattended. An already failed nightly run remains incomplete until its own report/publish steps have actually completed; building this app must not settle or overwrite that run.
-- Confirm missing app, changed profile executable, permission revocation and service restart produce actionable errors. No automatic content logging or private result files.
+Generic UI driving, screen capture, Reminders, Full Disk Access, arbitrary executable profiles, a stdio integration proxy, and remote-Mac transport are not implemented. Add an integration only with a concrete use case and real end-to-end verification. Do not infer capability from a privacy declaration alone.
 
-## Known boundaries
+## Operational boundaries
 
-macOS still requires a logged-in user session and explicit permission approvals. Computer sleep, remote-Mac selection, upstream application defects, revoked permissions and private entitlements are separate failure causes. Bifrost must report them rather than promise that all future runs cannot fail.
+A user must log in after a FileVault reboot. Sleep, permission revocation, upstream application changes and vendor restrictions remain independent failure causes. Repeat the actual required-source preflight before unattended work and report failures honestly.

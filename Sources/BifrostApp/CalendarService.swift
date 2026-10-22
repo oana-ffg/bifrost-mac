@@ -19,7 +19,7 @@ final class CalendarService {
     private func requirePermission() throws {
         let permission = Self.permission
         if permission != previousPermission { store.reset(); previousPermission = permission }
-        guard permission == "authorized" else { throw BridgeError("calendar_permission", "Calendar access is \(Self.permission). Open Bifrost.app and choose Grant Calendar Access. Unattended reads never request permission.") }
+        guard permission == "authorized" else { throw BridgeError("calendar_permission", "Calendar access is \(Self.permission). Open Bifrost Settings with the CLI settings command and choose Calendar Access. Unattended reads never request permission.") }
     }
     private func calendarRow(_ calendar: EKCalendar) -> [String: Any] {
         ["id": calendar.calendarIdentifier, "name": calendar.title, "source": calendar.source.title, "sourceType": sourceName(calendar.source.sourceType.rawValue)]
