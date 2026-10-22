@@ -19,8 +19,8 @@ Bifrost runs without a persistent menu-bar item or Dock icon. The CLI starts it 
 ## Remaining gates
 
 - A fresh Claude review of the final implementation, including background presentation, is deferred until provider quota is available. Prior design/implementation/routing reviews and their fixes are recorded in design.md; this is not a claim that the final revision has that additional review.
-- Fresh provider sessions should verify native MCP tool discovery after configuration/reconnection. An explicit host-access CLI test is not proof of every provider sandbox or live session's tool loading.
-- Computer History is not recovered. The preliminary app-owned test proved independent TCC attribution and vendor MCP initialization, but status returned `bootstrapTimedOut`; OS Automation consent and separate vendor parent checks still require investigation. No generic proxy, private API, or identity workaround is included.
+- Native Bifrost MCP discovery and the real Calendar/login doctor call pass in a fresh T3-hosted Codex session. Fresh Claude session discovery remains to be verified; direct sandboxed CLI access is still subject to host restrictions.
+- Computer History is not recovered. After explicit macOS Automation authorization, the read-only status call returned `Sender process is not authenticated`, confirming rejection of the companion-launched client. The diagnostic route was removed and the supported app reinstalled. A corrected T3 build and a real status test under its normal Codex ancestry are still needed. No generic proxy, private API, or identity workaround is included.
 - Calendar server sync freshness is not verified. The bridge reads EventKit's locally synced copy.
 - The earlier failed nightly run retains its own unfinished work. Calendar source recovery does not complete, publish or settle that run.
 

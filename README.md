@@ -4,7 +4,7 @@ A native macOS companion that lets local AI agents use Mac capabilities independ
 
 **Trust model:** Bifrost exposes approved Calendar reads to processes running as your macOS user. It is not a sandbox between your agents and your personal data. There is no network listener, arbitrary command runner, or Calendar write API.
 
-Bifrost is an early local-development release. Calendar permission and a logged-in Mac session are required. Computer History compatibility remains under investigation; do not treat it as a solved integration.
+Bifrost is an early local-development release. Calendar permission and a logged-in Mac session are required. Computer History is not supported by the bridge: its vendor authentication rejects a companion-launched client.
 
 ## What works in this release
 
@@ -84,7 +84,9 @@ For CLI usage and event-query arguments, run the installed binary with `--help`.
 
 `bifrost automation check` takes an already running app's bundle identifier and checks OS authorization without prompting. `bifrost permissions request automation` takes that same identifier and explicitly requests permission. Checks are bounded and report unresolved OS calls. These commands check macOS permission only; they do not execute scripts or prove that a vendor accepts the client.
 
-A preliminary signed-app test proved that macOS attributes an app-launched client to Bifrost, independently of T3. The installed Computer History client initialized its MCP protocol but its status call returned `bootstrapTimedOut`. Its separate vendor-side parent-process checks remain a possible additional restriction. No private API or identity/allowlist workaround is used. T3's missing privacy declarations are also an upstream packaging issue; a companion does not fix vendor restrictions.
+A signed-app test proved that macOS attributes an app-launched client to Bifrost, independently of T3. After macOS Automation access was explicitly authorized, the installed Computer History client returned `Sender process is not authenticated` from its read-only status call. The companion-launched path is therefore rejected by vendor authentication. The diagnostic route was removed; no proxy or identity workaround is shipped.
+
+T3 0.1.2 and the inspected upstream source still lack the Apple Events entitlement and usage description. [T3 issue #21282](https://github.com/pingdotgg/t3code/issues/21282) tracks the packaging defect. A corrected T3 build must preserve the normal Codex client ancestry, obtain its own Automation approval, and pass an actual Computer History status call before recovery can be claimed.
 
 ## Development
 
