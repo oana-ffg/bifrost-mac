@@ -1,6 +1,6 @@
 # Bifrost design
 
-Status: initial Calendar bridge implemented and verified on device. Claude's delayed review of an earlier revision is reconciled; a follow-up on the fixes is pending; Computer History remains unresolved. See acceptance.md for the verified scope.
+Status: initial Calendar bridge implemented and verified on device. Claude approved implementation commit `30018bc` after the earlier findings were fixed; Computer History is deferred. See acceptance.md for the verified scope.
 
 ## User requirement
 
@@ -35,6 +35,8 @@ The app is not App Sandbox enabled. Hardened Runtime still requires the Calendar
 Claude reviewed the design before implementation and independently reviewed the initial implementation. The implementation review found a connection-setup failure that could stop the listener. That was fixed and a disconnect-before-accept regression test added. Calendar time zones, occurrence identity, event status and permission-change handling were corrected. The CLI's LaunchServices completion uses synchronized state. The CLI/EventKit boundary is checked by linkage tests.
 
 A delayed Claude review found that all-day civil dates moved when the caller selected another time zone, and that malformed MCP IDs were echoed. Regression checks reproduced both failures before correction. All-day projection now preserves calendar dates and query membership across zones and daylight-saving changes, normalizing EventKit's inclusive 23:59:59 ends to exclusive next-day boundaries; timed events retain their instants. MCP IDs are restricted to strings or integers. Unknown listener errors are fatal rather than spinning. The always-JSON doctor retains `--json` for compatibility with existing callers.
+
+Claude independently approved commit `30018bc` with no blockers, rechecked the date and protocol fixes, and verified the real Calendar/login preflight from its own T3 session. The remaining environment tests and minor time-zone/query edge cases are listed in acceptance.md.
 
 The design review required a minimal signed-app test before a generic proxy. The test proved independent Bifrost TCC responsibility. After explicit macOS Automation authorization, the vendor client's read-only status call returned `Sender process is not authenticated`. This confirms vendor rejection of the companion-launched path. The diagnostic route was removed. Recovery now requires a T3 packaging fix that preserves normal Codex client ancestry, followed by a real status test under that corrected host.
 
