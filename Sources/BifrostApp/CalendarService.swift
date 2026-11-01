@@ -83,12 +83,13 @@ final class CalendarService {
         guard events.count <= 10_000 else { throw BridgeError("result_limit", "More than 10,000 event occurrences. Use a smaller range.") }
         try requirePermission()
         let formatter = ISO8601DateFormatter(); formatter.timeZone = query.timeZone
+        let projector = CalendarOccurrenceProjector(timeZone: query.timeZone, calendarTimeZone: calendarTimeZone)
         let projected = try events.map { event in
-            try CalendarOccurrence(itemID: event.calendarItemIdentifier, seriesID: event.eventIdentifier,
+            try projector.project(CalendarOccurrence(itemID: event.calendarItemIdentifier, seriesID: event.eventIdentifier,
                                calendarID: event.calendar.calendarIdentifier, calendarName: event.calendar.title, title: event.title ?? "",
                                start: event.startDate, end: event.endDate, occurrence: event.occurrenceDate ?? event.startDate,
                                allDay: event.isAllDay, recurring: event.hasRecurrenceRules, recurrence: recurrence(event),
-                               availability: availabilityName(event.availability), status: statusName(event.status)).project(timeZone: query.timeZone, calendarTimeZone: calendarTimeZone)
+                               availability: availabilityName(event.availability), status: statusName(event.status)))
         }
         let rows = projected.filter { $0.overlaps(start: query.start, end: query.end) }.sorted {
             if $0.start != $1.start { return $0.start < $1.start }
