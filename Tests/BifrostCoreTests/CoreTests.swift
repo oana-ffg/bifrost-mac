@@ -22,13 +22,14 @@ final class CoreTests: XCTestCase {
         func value(_ occurrence: Date) -> CalendarOccurrence {
             CalendarOccurrence(itemID: "series", seriesID: "same-series", calendarID: "calendar", calendarName: "Calendar", title: "An event", start: first, end: end, occurrence: occurrence, allDay: true, recurring: true, recurrence: "weekly", availability: "busy", status: "canceled")
         }
-        let firstRow = try value(first).project(timeZone: zone, calendarTimeZone: zone).row, next = try value(first.addingTimeInterval(7 * 86400)).project(timeZone: zone, calendarTimeZone: zone).row
+        let projector = CalendarOccurrenceProjector(timeZone: zone, calendarTimeZone: zone)
+        let firstRow = try projector.project(value(first)).row, next = try projector.project(value(first.addingTimeInterval(7 * 86400))).row
         XCTAssertEqual(firstRow["startDate"] as? String, "2026-10-23")
         XCTAssertEqual(firstRow["endDateExclusive"] as? String, "2026-10-24")
         XCTAssertEqual(firstRow["start"] as? String, "2026-10-23T00:00:00+02:00")
         XCTAssertEqual(firstRow["status"] as? String, "canceled")
         XCTAssertNotEqual(firstRow["id"] as? String, next["id"] as? String)
-        XCTAssertEqual(firstRow["id"] as? String, try value(first).project(timeZone: TimeZone(secondsFromGMT: 0)!, calendarTimeZone: zone).row["id"] as? String)
+        XCTAssertEqual(firstRow["id"] as? String, try CalendarOccurrenceProjector(timeZone: TimeZone(secondsFromGMT: 0)!, calendarTimeZone: zone).project(value(first)).row["id"] as? String)
     }
     func testAllDayDatesDoNotMoveToThePreviousDayInAnotherZone() throws {
         let iso = ISO8601DateFormatter()
@@ -37,7 +38,7 @@ final class CoreTests: XCTestCase {
         let event = CalendarOccurrence(itemID: "all-day", seriesID: nil, calendarID: "calendar", calendarName: "Calendar", title: "An event", start: start, end: end, occurrence: start, allDay: true, recurring: false, recurrence: nil, availability: "free", status: "confirmed")
         let sourceZone = try XCTUnwrap(TimeZone(identifier: "Europe/Copenhagen"))
         let outputZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
-        let projection = try event.project(timeZone: outputZone, calendarTimeZone: sourceZone)
+        let projection = try CalendarOccurrenceProjector(timeZone: outputZone, calendarTimeZone: sourceZone).project(event)
         let row = projection.row
         XCTAssertFalse(projection.overlaps(start: try XCTUnwrap(iso.date(from: "2026-10-22T00:00:00-04:00")), end: try XCTUnwrap(iso.date(from: "2026-10-23T00:00:00-04:00"))))
         XCTAssertTrue(projection.overlaps(start: try XCTUnwrap(iso.date(from: "2026-10-23T00:00:00-04:00")), end: try XCTUnwrap(iso.date(from: "2026-10-24T00:00:00-04:00"))))
@@ -53,11 +54,11 @@ final class CoreTests: XCTestCase {
         func event(allDay: Bool) -> CalendarOccurrence {
             CalendarOccurrence(itemID: "event", seriesID: nil, calendarID: "calendar", calendarName: "Calendar", title: "An event", start: start, end: end, occurrence: start, allDay: allDay, recurring: false, recurrence: nil, availability: "free", status: "confirmed")
         }
-        let allDay = try event(allDay: true).project(timeZone: output, calendarTimeZone: source)
+        let allDay = try CalendarOccurrenceProjector(timeZone: output, calendarTimeZone: source).project(event(allDay: true))
         XCTAssertEqual(allDay.start, iso.date(from: "2026-11-01T00:00:00-04:00"))
         XCTAssertEqual(allDay.end, iso.date(from: "2026-11-02T00:00:00-05:00"))
         XCTAssertEqual(allDay.end.timeIntervalSince(allDay.start), 25 * 3600)
-        let timed = try event(allDay: false).project(timeZone: output, calendarTimeZone: source)
+        let timed = try CalendarOccurrenceProjector(timeZone: output, calendarTimeZone: source).project(event(allDay: false))
         XCTAssertEqual(timed.start, start); XCTAssertEqual(timed.end, end)
         XCTAssertEqual(timed.row["start"] as? String, "2026-10-31T19:00:00-04:00")
         let point = CalendarOccurrenceProjection(start: start, end: start, row: [:])
@@ -69,12 +70,33 @@ final class CoreTests: XCTestCase {
         let source = try XCTUnwrap(TimeZone(identifier: "Europe/Copenhagen")), output = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
         let start = try XCTUnwrap(iso.date(from: "2026-10-23T00:00:00+02:00")), inclusiveEnd = try XCTUnwrap(iso.date(from: "2026-10-23T23:59:59+02:00"))
         let event = CalendarOccurrence(itemID: "event", seriesID: nil, calendarID: "calendar", calendarName: "Calendar", title: "An event", start: start, end: inclusiveEnd, occurrence: start, allDay: true, recurring: false, recurrence: nil, availability: "free", status: "confirmed")
-        let value = try event.project(timeZone: output, calendarTimeZone: source)
+        let value = try CalendarOccurrenceProjector(timeZone: output, calendarTimeZone: source).project(event)
         XCTAssertEqual(value.row["startDate"] as? String, "2026-10-23")
         XCTAssertEqual(value.row["endDateExclusive"] as? String, "2026-10-24")
         XCTAssertEqual(value.end, iso.date(from: "2026-10-24T00:00:00-04:00"))
         XCTAssertTrue(value.overlaps(start: try XCTUnwrap(iso.date(from: "2026-10-23T23:59:59-04:00")), end: try XCTUnwrap(iso.date(from: "2026-10-24T00:00:00-04:00"))))
         XCTAssertFalse(value.overlaps(start: value.end, end: value.end.addingTimeInterval(60)))
+    }
+    func testProjectionReusesThreeFormattersForTenThousandOccurrences() throws {
+        var isoCreations = 0, dayCreations = 0
+        let source = try XCTUnwrap(TimeZone(identifier: "Europe/Copenhagen"))
+        let output = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let projector = CalendarOccurrenceProjector(timeZone: output, calendarTimeZone: source,
+            makeISOFormatter: { isoCreations += 1; return ISO8601DateFormatter() },
+            makeDayFormatter: { dayCreations += 1; return DateFormatter() })
+        let start = Date(timeIntervalSince1970: 1792706400)
+        var identities = Set<String>()
+        for index in 0..<10_000 {
+            let occurrence = start.addingTimeInterval(Double(index) * 60)
+            let event = CalendarOccurrence(itemID: "series", seriesID: "series", calendarID: "calendar", calendarName: "Calendar", title: "An event", start: occurrence, end: occurrence.addingTimeInterval(3600), occurrence: occurrence, allDay: index % 2 == 0, recurring: true, recurrence: "daily", availability: "busy", status: "confirmed")
+            let value = try projector.project(event)
+            identities.insert(try XCTUnwrap(value.row["id"] as? String))
+            XCTAssertTrue(value.overlaps(start: value.start, end: value.end))
+            XCTAssertEqual(value.row["title"] as? String, "An event")
+        }
+        XCTAssertEqual(identities.count, 10_000)
+        XCTAssertEqual(isoCreations, 2)
+        XCTAssertEqual(dayCreations, 1)
     }
     func testFailureCannotBecomeEmptySuccess() throws {
         XCTAssertThrowsError(try Wire.result(Wire.failure(BridgeError("calendar_permission", "Denied")))) { error in

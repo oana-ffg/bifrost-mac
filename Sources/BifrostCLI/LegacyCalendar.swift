@@ -50,29 +50,42 @@ struct LegacyCalendar {
         let selectedNames = selected.compactMap { $0["name"] as? String }.sorted()
         if list { try output(["calendars": selectedNames]); return }
         let ids = selected.compactMap { $0["id"] as? String }, formatter = ISO8601DateFormatter(); formatter.timeZone = zone
-        func rows(_ first: Date, _ last: Date) throws -> [[String: Any]] {
+        func occurrences(_ first: Date, _ last: Date) throws -> [CalendarOccurrenceProjection] {
             guard !ids.isEmpty else { throw BridgeError("no_calendar_coverage", "No calendars are available. Verify Calendar setup before reporting an empty agenda.") }
-            var records: [String: (Date, [String: Any])] = [:], cursor = first
+            var records: [String: CalendarOccurrenceProjection] = [:], cursor = first
             while cursor < last {
                 let upper = min(calendar.date(byAdding: .day, value: 365, to: cursor)!, last)
                 let response = try BridgeClient.call("calendar.events", ["start": formatter.string(from: cursor), "end": formatter.string(from: upper), "calendarIDs": ids, "timezone": zone.identifier]) as? [String: Any] ?? [:]
                 for event in response["events"] as? [[String: Any]] ?? [] {
                     guard let id = event["id"] as? String else { throw BridgeError("invalid_response", "Calendar occurrence has no identifier.") }
                     guard let start = event["start"] as? String, let date = formatter.date(from: start) else { throw BridgeError("invalid_response", "Calendar occurrence has an invalid start time.") }
-                    records[id] = (date, event)
+                    guard let end = event["end"] as? String, let endDate = formatter.date(from: end) else { throw BridgeError("invalid_response", "Calendar occurrence has an invalid end time.") }
+                    records[id] = CalendarOccurrenceProjection(start: date, end: endDate, row: event)
                 }
                 cursor = upper
             }
             return records.sorted { left, right in
-                left.value.0 == right.value.0 ? left.key < right.key : left.value.0 < right.value.0
-            }.map { entry in
-                let event = entry.value.1
+                left.value.start == right.value.start ? left.key < right.key : left.value.start < right.value.start
+            }.map(\.value)
+        }
+        func rows(_ occurrences: [CalendarOccurrenceProjection]) -> [[String: Any]] {
+            occurrences.map { occurrence in
+                let event = occurrence.row
                 return ["calendar": event["calendar"] ?? "", "title": event["title"] ?? "", "start": event["start"] ?? "", "end": event["end"] ?? "", "isAllDay": event["isAllDay"] ?? false, "availability": event["availability"] ?? "unknown", "recurring": event["recurring"] ?? false, "recurrence": event["recurrence"] ?? NSNull(), "status": event["status"] ?? "unknown"]
             }
         }
+        let range = try occurrences(start, end)
+        func dayRows(_ first: Date, _ last: Date) throws -> [[String: Any]] {
+            // Only reuse a fully covered interval. Historical/custom ranges still
+            // fetch the independent today/tomorrow sections when necessary.
+            if first >= start, last <= end {
+                return rows(range.filter { $0.overlaps(start: first, end: last) })
+            }
+            return rows(try occurrences(first, last))
+        }
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!, afterTomorrow = calendar.date(byAdding: .day, value: 2, to: today)!
         try output(["timezone": zone.identifier, "now": formatter.string(from: now), "calendars": selectedNames,
-                    "range": ["start": day.string(from: start), "end": day.string(from: calendar.date(byAdding: .day, value: -1, to: end)!), "events": try rows(start, end)],
-                    "today": try rows(today, tomorrow), "tomorrow": try rows(tomorrow, afterTomorrow)])
+                    "range": ["start": day.string(from: start), "end": day.string(from: calendar.date(byAdding: .day, value: -1, to: end)!), "events": rows(range)],
+                    "today": try dayRows(today, tomorrow), "tomorrow": try dayRows(tomorrow, afterTomorrow)])
     }
 }
