@@ -56,7 +56,7 @@ large = small + [event(f"occurrence-{index:05}", today + dt.timedelta(seconds=in
 failures = []
 
 
-def check(name, arguments, first, last, records, expected_queries):
+def check(name, arguments, first, last, records, expected_queries, expected_error=None):
     requests, errors = [], []
     with tempfile.TemporaryDirectory(prefix="bifrost-cli-", dir="/tmp") as directory:
         home = Path(directory)
@@ -86,7 +86,7 @@ def check(name, arguments, first, last, records, expected_queries):
                             params = request["params"]
                             assert params["calendarIDs"] == ["synthetic"]
                             assert params["timezone"] in {"UTC", "GMT"}
-                            result = {"events": sorted(
+                            result = {"events": records if expected_error else sorted(
                                 (row for row in records if overlaps(row, instant(params["start"]), instant(params["end"]))),
                                 key=lambda row: (instant(row["start"]), row["id"]))}
                         payload = json.dumps({"version": 1, "ok": True, "result": result}).encode()
@@ -107,6 +107,13 @@ def check(name, arguments, first, last, records, expected_queries):
             listener.close()
         assert not worker.is_alive(), "Test bridge did not stop"
         assert not errors, (errors, requests)
+        if expected_error:
+            assert run.returncode == 1, (run.returncode, run.stderr)
+            assert not run.stdout, run.stdout
+            assert run.stderr == f"invalid_response: Calendar occurrence has an invalid {expected_error} time.\n", run.stderr
+            assert [request["method"] for request in requests] == ["calendar.list", "calendar.events"]
+            print(f"{name}: invalid_response preserved", flush=True)
+            return
         assert run.returncode == 0, (run.returncode, run.stderr)
         assert not run.stderr, run.stderr
         output = json.loads(run.stdout)
@@ -136,6 +143,10 @@ check("unrelated historical range", ["--start", "2001-01-01", "--days", "2"],
 check("chunk boundary with spanning occurrence", ["--start", (today - 364 * day).date().isoformat(), "--days", "366"],
       today - 364 * day, today + 2 * day, small, 2)
 check("maximum compatibility range", ["--days", "3660"], today, today + 3660 * day, small, 11)
+for field in ["start", "end"]:
+    for malformed in ["invalid", "2026-01-02T03:04:05.123Z", "2026-01-02T25:04:05Z", None]:
+        record = dict(small[0], **{field: malformed})
+        check(f"malformed {field}: {malformed!r}", [], today, today + 2 * day, [record], 1, expected_error=field)
 if failures:
     raise SystemExit("\n".join(failures))
 print("Compatibility output and bounded bridge request counts passed")

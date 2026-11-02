@@ -7,6 +7,7 @@ let package = Package(
         .target(name: "BifrostCore"),
         .executableTarget(name: "BifrostApp", dependencies: ["BifrostCore"]),
         .executableTarget(name: "BifrostCLI", dependencies: ["BifrostCore"]),
-        .testTarget(name: "BifrostCoreTests", dependencies: ["BifrostCore"])
+        .testTarget(name: "BifrostCoreTests", dependencies: ["BifrostCore"]),
+        .testTarget(name: "BifrostCLITests", dependencies: ["BifrostCLI"])
     ]
 )

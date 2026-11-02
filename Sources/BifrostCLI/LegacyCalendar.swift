@@ -3,6 +3,14 @@ import BifrostCore
 
 /// Compatibility with the existing apple-calendar skill's arguments and JSON contract.
 struct LegacyCalendar {
+    static func occurrenceDate(_ text: String, style: Date.ISO8601FormatStyle, formatter: ISO8601DateFormatter) -> Date? {
+        // FormatStyle parsing is more lenient about fractional seconds and invalid
+        // clock fields. Only fast-path an exact round trip in the response zone;
+        // retain the existing parser's acceptance/rejection for all other inputs.
+        if let date = try? style.parse(text), style.format(date) == text { return date }
+        return formatter.date(from: text)
+    }
+
     static func run(_ arguments: [String]) throws {
         var startText: String?, endText: String?, days: Int?, names: [String] = []
         var zone = TimeZone.current, list = false, index = 0
@@ -50,6 +58,7 @@ struct LegacyCalendar {
         let selectedNames = selected.compactMap { $0["name"] as? String }.sorted()
         if list { try output(["calendars": selectedNames]); return }
         let ids = selected.compactMap { $0["id"] as? String }, formatter = ISO8601DateFormatter(); formatter.timeZone = zone
+        let timestampStyle = Date.ISO8601FormatStyle(timeZone: zone).timeZoneSeparator(.colon)
         func occurrences(_ first: Date, _ last: Date) throws -> [CalendarOccurrenceProjection] {
             guard !ids.isEmpty else { throw BridgeError("no_calendar_coverage", "No calendars are available. Verify Calendar setup before reporting an empty agenda.") }
             var records: [String: CalendarOccurrenceProjection] = [:], cursor = first
@@ -58,8 +67,8 @@ struct LegacyCalendar {
                 let response = try BridgeClient.call("calendar.events", ["start": formatter.string(from: cursor), "end": formatter.string(from: upper), "calendarIDs": ids, "timezone": zone.identifier]) as? [String: Any] ?? [:]
                 for event in response["events"] as? [[String: Any]] ?? [] {
                     guard let id = event["id"] as? String else { throw BridgeError("invalid_response", "Calendar occurrence has no identifier.") }
-                    guard let start = event["start"] as? String, let date = formatter.date(from: start) else { throw BridgeError("invalid_response", "Calendar occurrence has an invalid start time.") }
-                    guard let end = event["end"] as? String, let endDate = formatter.date(from: end) else { throw BridgeError("invalid_response", "Calendar occurrence has an invalid end time.") }
+                    guard let start = event["start"] as? String, let date = occurrenceDate(start, style: timestampStyle, formatter: formatter) else { throw BridgeError("invalid_response", "Calendar occurrence has an invalid start time.") }
+                    guard let end = event["end"] as? String, let endDate = occurrenceDate(end, style: timestampStyle, formatter: formatter) else { throw BridgeError("invalid_response", "Calendar occurrence has an invalid end time.") }
                     records[id] = CalendarOccurrenceProjection(start: date, end: endDate, row: event)
                 }
                 cursor = upper
